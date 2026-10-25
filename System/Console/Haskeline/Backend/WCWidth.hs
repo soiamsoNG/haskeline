@@ -21,8 +21,15 @@ wcwidth c = case haskeline_mk_wcwidth $ toEnum $ fromEnum c of
                         -- "\SOH...\STX" hack in LineState.stringToGraphemes.)
                 w -> fromIntegral w
 
+-- | The width of a grapheme.  A grapheme may consist of several
+-- codepoints (for example a base character plus combining marks, or an
+-- emoji ZWJ sequence).  We compute its width by adding the width of each
+-- codepoint, which matches how terminals such as VTE lay out these
+-- sequences: the family emoji is eight columns wide, because its four
+-- emoji components are each two columns wide while the joiners are
+-- zero-width.  
 gWidth :: Grapheme -> Int
-gWidth g = wcwidth (baseChar g)
+gWidth = foldl' (+) 0 . map wcwidth . graphemeChars
 
 gsWidth :: [Grapheme] -> Int
 gsWidth = foldl' (+) 0 . map gWidth

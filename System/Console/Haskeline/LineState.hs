@@ -5,6 +5,8 @@ module System.Console.Haskeline.LineState(
                     -- * Graphemes
                     Grapheme(),
                     baseChar,
+                    graphemeChars,
+                    isCombiningChar,
                     stringToGraphemes,
                     graphemesToString,
                     modifyBaseChar,
@@ -96,12 +98,80 @@ mapBaseChars f = map (modifyBaseChar f)
 baseGrapheme :: Char -> Grapheme
 baseGrapheme c = Grapheme {gBaseChar = c, combiningChars = []}
 
--- | Add a combining character to the given 'Grapheme'.
+-- | Add a character to the given 'Grapheme'.
 addCombiner :: Grapheme -> Char -> Grapheme
 addCombiner g c = g {combiningChars = combiningChars g ++ [c]}
 
+-- | All characters making up a grapheme, starting with its base character.
+graphemeChars :: Grapheme -> String
+graphemeChars g = gBaseChar g : combiningChars g
+
+-- | Characters which attach to the preceding grapheme.  Besides combining
+-- marks, this includes the joiners and modifiers used by emoji sequences,
+-- such as ZWJ, variation selectors, skin-tone modifiers and tag characters.
 isCombiningChar :: Char -> Bool
-isCombiningChar c = generalCategory c == NonSpacingMark
+isCombiningChar c =
+    generalCategory c `elem` [NonSpacingMark, EnclosingMark]
+    || c == '\x200C' || c == '\x200D'
+    || isVariationSelector c
+    || isEmojiModifier c
+    || isEmojiTag c
+
+isVariationSelector :: Char -> Bool
+isVariationSelector c =
+    (c >= '\xFE00' && c <= '\xFE0F')
+    || (c >= '\xE0100' && c <= '\xE01EF')
+
+isEmojiModifier :: Char -> Bool
+isEmojiModifier c = c >= '\x1F3FB' && c <= '\x1F3FF'
+
+isEmojiTag :: Char -> Bool
+isEmojiTag c = c >= '\xE0020' && c <= '\xE007F'
+
+isRegionalIndicator :: Char -> Bool
+isRegionalIndicator c = c >= '\x1F1E6' && c <= '\x1F1FF'
+
+-- | A deliberately broad approximation of Unicode's Extended_Pictographic
+-- property.  It only controls whether a character following ZWJ is joined
+-- into the same grapheme, so over-approximating is harmless.
+isExtendedPictographic :: Char -> Bool
+isExtendedPictographic c =
+    generalCategory c == OtherSymbol
+    || (c >= '\x1F000' && c <= '\x1FAFF')
+    || (c >= '\x1FC00' && c <= '\x1FFFD')
+
+isHangulL, isHangulV, isHangulT, isHangulLV, isHangulLVT :: Char -> Bool
+isHangulL c = (c >= '\x1100' && c <= '\x115F')
+           || (c >= '\xA960' && c <= '\xA97C')
+isHangulV c = (c >= '\x1160' && c <= '\x11A7')
+           || (c >= '\xD7B0' && c <= '\xD7C6')
+isHangulT c = (c >= '\x11A8' && c <= '\x11FF')
+           || (c >= '\xD7CB' && c <= '\xD7FB')
+isHangulLV c = c >= '\xAC00' && c <= '\xD7A3'
+               && (fromEnum c - 0xAC00) `mod` 28 == 0
+isHangulLVT c = c >= '\xAC00' && c <= '\xD7A3'
+                 && (fromEnum c - 0xAC00) `mod` 28 /= 0
+
+-- | Should the character be part of the same grapheme as the given one?
+joinsGrapheme :: Grapheme -> Char -> Bool
+joinsGrapheme g c
+    | isCombiningChar c = True
+    | isRegionalIndicator c = all isRegionalIndicator cs
+                              && odd (length cs)
+    | isExtendedPictographic c = endsWithZWJ
+    | isHangulL c = isHangulL lastChar
+    | isHangulV c = isHangulL lastChar
+                    || isHangulV lastChar
+                    || isHangulLV lastChar
+    | isHangulT c = isHangulV lastChar
+                    || isHangulT lastChar
+                    || isHangulLV lastChar
+                    || isHangulLVT lastChar
+    | otherwise = False
+  where
+    cs = graphemeChars g
+    lastChar = last cs
+    endsWithZWJ = lastChar == '\x200D'
 
 -- | Converts a string into a sequence of graphemes.
 --
@@ -119,8 +189,12 @@ stringToGraphemes = mkString . dropWhile isCombiningChar
         mkString ('\SOH':cs) = stringToGraphemes cs
         mkString ('\ESC':cs) | (ctrl,'\STX':rest) <- break (=='\STX') cs
                     = Grapheme '\ESC' ctrl : stringToGraphemes rest
-        mkString (c:cs) = Grapheme c (takeWhile isCombiningChar cs)
-                                : mkString (dropWhile isCombiningChar cs)
+        mkString (c:cs) = let (g,rest) = spanGrapheme (baseGrapheme c) cs
+                          in g : mkString rest
+
+        spanGrapheme g (c:cs)
+            | joinsGrapheme g c = spanGrapheme (addCombiner g c) cs
+        spanGrapheme g rest = (g,rest)
 
 graphemesToString :: [Grapheme] -> String
 graphemesToString = concatMap (\g -> (baseChar g : combiningChars g))
@@ -201,6 +275,8 @@ insertChar c im@(IMode xs ys)
                             []   -> im -- drop a combining character if it
                                        -- appears at the start of the line.
                             z:zs -> IMode (addCombiner z c : zs) ys
+    | (z:zs) <- xs, joinsGrapheme z c
+                        = IMode (addCombiner z c : zs) ys
     | otherwise         = IMode (baseGrapheme c : xs) ys
 
 -- | Insert a sequence of characters to the left of the cursor.

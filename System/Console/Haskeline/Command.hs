@@ -93,7 +93,7 @@ useKey k x = KeyMap $ \k' -> if k==k' then Just (Consumed x) else Nothing
 -- TODO: could just be a monadic action that returns a Char.
 useChar :: (Char -> Command m s t) -> KeyCommand m s t
 useChar act = KeyMap $ \k -> case k of
-                    Key m (KeyChar c) | isPrint c && m == noModifier
+                    Key m (KeyChar c) | (isPrint c || isCombiningChar c) && m == noModifier
                         -> Just $ Consumed (act c)
                     _ -> Nothing
 

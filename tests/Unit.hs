@@ -130,6 +130,8 @@ unicodeMovement i = "Unicode movement" ~:
         [prompt 0, utf8 "α", utf8 "\bxα\b"]
     , "coalesced" ~: utf8Test i [utf8 "α\ESC[Dx"]
         [prompt 0, utf8 "xα\b"]
+    , "emoji ZWJ cluster" ~: utf8Test i [utf8 fam, utf8 "\ESC[Dx"]
+        [prompt 0, utf8 fam, utf8 "\ESC[8Dx" <> utf8 fam <> utf8 "\ESC[8D"]
     , "lineWrap" ~: utf8Test i
         [ utf8 longWideChar
         , raw [1]
@@ -142,6 +144,7 @@ unicodeMovement i = "Unicode movement" ~:
 
     ]
   where
+    fam = "\128104\8205\128105\8205\128103\8205\128102"
     longWideChar = T.concat $ replicate 30 $ "안기영"
     (lwc1,lwcs1) = T.splitAt ((80-2)`div`2) longWideChar
     (lwc2,lwcs2) = T.splitAt (80`div`2) lwcs1
