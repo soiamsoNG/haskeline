@@ -20,7 +20,7 @@ module System.Console.Haskeline.Backend.WCWidth(
 -- This module wraps the necessary foreign routines, and also provides some convenience
 -- functions for width-breaking code.
 
-import System.Console.Haskeline.Term.Layout
+import System.Console.Haskeline.Term.Layout hiding (width)
 import System.Console.Haskeline.Term.WidthPolicy
 import System.Console.Haskeline.LineState
 import System.Console.Haskeline.Monads (MonadReader, asks)
