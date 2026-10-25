@@ -111,12 +111,14 @@ graphemeChars g = gBaseChar g : combiningChars g
 -- marks, this includes the joiners and modifiers used by emoji sequences,
 -- such as ZWJ, variation selectors, skin-tone modifiers and tag characters.
 isCombiningChar :: Char -> Bool
-isCombiningChar c =
-    generalCategory c `elem` [NonSpacingMark, EnclosingMark]
-    || c == '\x200C' || c == '\x200D'
-    || isVariationSelector c
-    || isEmojiModifier c
-    || isEmojiTag c
+isCombiningChar c
+    | c < '\x0300' = False
+    | otherwise =
+        generalCategory c `elem` [NonSpacingMark, EnclosingMark]
+        || c == '\x200C' || c == '\x200D'
+        || isVariationSelector c
+        || isEmojiModifier c
+        || isEmojiTag c
 
 isVariationSelector :: Char -> Bool
 isVariationSelector c =
@@ -136,10 +138,11 @@ isRegionalIndicator c = c >= '\x1F1E6' && c <= '\x1F1FF'
 -- property.  It only controls whether a character following ZWJ is joined
 -- into the same grapheme, so over-approximating is harmless.
 isExtendedPictographic :: Char -> Bool
-isExtendedPictographic c =
-    generalCategory c == OtherSymbol
-    || (c >= '\x1F000' && c <= '\x1FAFF')
-    || (c >= '\x1FC00' && c <= '\x1FFFD')
+isExtendedPictographic c
+    | c < '\x00A9' = False
+    | c >= '\x1F000' = c <= '\x1FFFD'
+    | c >= '\x2600' && c <= '\x27BF' = True
+    | otherwise = generalCategory c == OtherSymbol
 
 isHangulL, isHangulV, isHangulT, isHangulLV, isHangulLVT :: Char -> Bool
 isHangulL c = (c >= '\x1100' && c <= '\x115F')
