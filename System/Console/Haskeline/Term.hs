@@ -6,6 +6,11 @@ import System.Console.Haskeline.Key
 import System.Console.Haskeline.Prefs(Prefs)
 import System.Console.Haskeline.Completion(Completion)
 import System.Console.Haskeline.Backend.WidthPolicy
+import System.Console.Haskeline.Backend.WCWidth
+    ( gsWidthWith
+    , splitAtWidthWith
+    , takeWidthWith
+    )
 
 import Control.Concurrent
 import Control.Concurrent.STM
@@ -157,6 +162,24 @@ saveKeys ch = atomically . writeTChan ch . KeyInput
 
 data Layout = Layout {width, height :: Int, widthPolicy :: WidthPolicy}
                     deriving (Show,Eq)
+
+-----------------------------------
+-- Width helpers which take the policy from the current Layout.
+
+gsWidthM :: MonadReader Layout m => [Grapheme] -> m Int
+gsWidthM gs = asks $ \lay -> gsWidthWith (widthPolicy lay) gs
+
+splitAtWidthM :: MonadReader Layout m => Int -> [Grapheme]
+              -> m ([Grapheme],[Grapheme],Int)
+splitAtWidthM n gs = asks $ \lay -> splitAtWidthWith (widthPolicy lay) n gs
+
+takeWidthM :: MonadReader Layout m => Int -> [Grapheme]
+           -> m ([Grapheme],Int)
+takeWidthM n gs = asks $ \lay -> takeWidthWith (widthPolicy lay) n gs
+
+-- | Pure variant for code which already has a 'Layout'.
+gsWidthFor :: Layout -> [Grapheme] -> Int
+gsWidthFor lay = gsWidthWith (widthPolicy lay)
 
 -----------------------------------
 -- Utility functions for the various backends.

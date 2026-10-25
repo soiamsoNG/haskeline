@@ -1,7 +1,6 @@
 module System.Console.Haskeline.Backend.DumbTerm where
 
 import System.Console.Haskeline.Backend.Posix
-import System.Console.Haskeline.Backend.WCWidth
 import System.Console.Haskeline.Term
 import System.Console.Haskeline.LineState
 import System.Console.Haskeline.Monads as Monads
@@ -76,11 +75,11 @@ drawLineDiff' :: LineChars -> LineChars -> DumbTermM ()
 drawLineDiff' (xs1,ys1) (xs2,ys2) = do
     Window {pos=p} <- get
     w <- maxWidth
-    policy <- asks widthPolicy
     let (xs1',xs2') = matchInit xs1 xs2
-    let (xw1, xw2) = (gsWidthWith policy xs1', gsWidthWith policy xs2')
+    xw1 <- gsWidthM xs1'
+    xw2 <- gsWidthM xs2'
     let newP = p + xw2 - xw1
-    let (ys2', yw2) = takeWidthWith policy (w-newP) ys2
+    (ys2', yw2) <- takeWidthM (w-newP) ys2
     if xw1 > p  || newP >= w
         then refitLine (xs2,ys2)
         else do -- we haven't moved outside the margins
@@ -91,27 +90,29 @@ drawLineDiff' (xs1,ys1) (xs2,ys2) = do
                     printText $ backs xw1
                 ([],_) | ys1 == xs2' ++ ys2 -> -- moved right
                     printText (graphemesToString xs2')
-                _ -> let extraLength = xw1 + snd (takeWidthWith policy (w-p) ys1)
-                                        - xw2 - yw2
-                     in printText $ backs xw1
+                _ -> do
+                    (_, extraWidth) <- takeWidthM (w-p) ys1
+                    let extraLength = xw1 + extraWidth - xw2 - yw2
+                    printText $ backs xw1
                         ++ graphemesToString (xs2' ++ ys2') ++ clearDeadText extraLength
                         ++ backs yw2
 
 refitLine :: ([Grapheme],[Grapheme]) -> DumbTermM ()
 refitLine (xs,ys) = do
     w <- maxWidth
-    policy <- asks widthPolicy
-    let (xs',p) = dropFrames policy w xs
+    (xs',p) <- dropFrames w xs
     put Window {pos=p}
-    let (ys',k) = takeWidthWith policy (w - p) ys
+    (ys',k) <- takeWidthM (w - p) ys
     printText $ cr ++ graphemesToString (xs' ++ ys')
         ++ spaces (w-k-p)
         ++ backs (w-p)
   where
     -- returns the width of the returned characters.
-    dropFrames policy w zs = case splitAtWidthWith policy w zs of
-                        (_,[],l) -> (zs,l)
-                        (_,zs',_) -> dropFrames policy w zs'
+    dropFrames w zs = do
+        (_,zs',l) <- splitAtWidthM w zs
+        case zs' of
+            [] -> return (zs,l)
+            _ -> dropFrames w zs'
 
     
 clearDeadText :: Int -> String
