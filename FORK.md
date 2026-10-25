@@ -3,7 +3,7 @@
 This is haskeline `master` at upstream commit `bbedbc9` (version 0.8.5.0),
 with the following changes:
 
-- Unicode 17.0.0 character-width data (`04dfa7c`).
+- Unicode 18.0.0 character-width data.
 - A page-deduplicated width table in `cbits/h_wcwidth.c` (`38b4492`).
 - Emoji and other extended grapheme clusters are kept together when editing
   (`ec611c5`).
@@ -14,13 +14,13 @@ The public `System.Console.Haskeline` API and the C entry points are
 unchanged.  Some internal modules are exposed through
 `System.Console.Haskeline.Internal`.
 
-## Unicode 17 width tables
+## Unicode 18 width tables
 
 `cbits/h_wcwidth.c` was regenerated from the Unicode Character Database.
 The old interval arrays have been replaced by a page-deduplicated table:
 Unicode is split into 256-code-point pages, each page stores four 2-bit width
-codes per byte, and a 4352-entry index maps a page to one of 115 unique
-stored pages.  The table occupies 11,712 bytes.
+codes per byte, and a 4352-entry index maps a page to one of 116 unique
+stored pages.  The table occupies 11,776 bytes.
 
 The width classes are:
 
@@ -37,15 +37,55 @@ and wide classes and therefore return 0.  `U+00AD` is not zero width.
 The tables were derived from these files:
 
 - `UnicodeData.txt`
-  <https://www.unicode.org/Public/17.0.0/ucd/UnicodeData.txt>
-  SHA-256 `2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c`
+  <https://www.unicode.org/Public/18.0.0/ucd/UnicodeData.txt>
+  SHA-256 `0736451de439ae7baf1425136617da495e09ee5afbe6e394374db7009ea08950`
 - `EastAsianWidth.txt`
-  <https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt>
-  SHA-256 `ea7ce50f3444a050333448dffef1cadd9325af55cbb764b4a2280faf52170a33`
+  <https://www.unicode.org/Public/18.0.0/ucd/EastAsianWidth.txt>
+  SHA-256 `a0cf29eacd00cfcaec4381c6b7c281685f18dbb4e7ff82b4076ccb342ca839aa`
 
-The result was cross-checked against `@stackline/wcwidth@1.0.2`.  Its
-`ZERO_WIDTH` and `WIDE` tables match this implementation, and the ambiguous
-table was derived independently from the same UCD files.
+The previous Unicode 17 table was cross-checked against
+`@stackline/wcwidth@1.0.2`.  That package predates Unicode 18, so this
+revision is derived only from the UCD 18.0.0 files above; the ambiguous table
+is still generated independently with the rule shown above.
+
+## How to generate the width table
+
+The table is generated from the UCD files listed above.  The generator is
+intentionally not part of the repository; the procedure is:
+
+1. Parse field 3 of `UnicodeData.txt` for `Mn`, `Me` and `Cf`, expanding
+   `First>`/`Last>` ranges.  Parse `EastAsianWidth.txt` for `A`, `W` and `F`.
+2. Assign every code point in `U+0000..U+10FFFF` a 2-bit width class, in this
+   order:
+   - `0`: `Mn | Me | Cf`, except `U+00AD`, plus the Hangul Jamo ranges
+     `U+1160-U+11FF`, `U+D7B0-U+D7C6` and `U+D7CB-U+D7FB`;
+   - `2`: `W | F` from `EastAsianWidth.txt`;
+   - `3`: `A` from `EastAsianWidth.txt`;
+   - `1`: everything else.
+3. Split the classes into 256-code-point pages.  Pack four 2-bit values into
+   each byte, least significant pair first:
+   `p[0] | p[1] << 2 | p[2] << 4 | p[3] << 6`.
+4. Deduplicate identical packed pages and emit
+   `haskeline_width_pages` plus the 4352-entry
+   `haskeline_width_page_index`.
+5. Update the UCD version, SHA-256 values, unique page count and table size
+   in the file header and in this document.
+
+Control characters are handled in `haskeline_width_for`, not in the page
+table.  The CJK entry point maps class `3` to width `2`.
+
+Verification:
+
+```sh
+gcc -std=c89 -pedantic -Wall -Wextra -c cbits/h_wcwidth.c -o /tmp/h89.o
+cabal build all
+cabal test
+```
+
+For the full check, compare every code point in `U+0000..U+10FFFF` against
+the rules above for both the default and CJK entry points.  NUL maps to `0`,
+C0/C1/DEL map to `-1`, and ambiguous code points map to `2` in the CJK
+variant.
 
 ## Grapheme clusters
 
