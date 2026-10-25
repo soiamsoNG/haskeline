@@ -1,28 +1,6 @@
 module System.Console.Haskeline.Term
-    ( module System.Console.Haskeline.Backend.Layout
-    , Term(..)
-    , RunTerm(..)
-    , TermOps(..)
-    , FileOps(..)
-    , EvalTerm(..)
-    , Interrupt(..)
-    , CommandMonad(..)
-    , Event(..)
-    , drawLine
-    , clearLine
-    , flushEventQueue
-    , isTerminalStyle
-    , mapEvalTerm
-    , matchInit
-    , keyEventLoop
-    , saveKeys
-    , hWithBinaryMode
-    , bracketSet
-    , hGetByte
-    , guardedEOF
-    , hMaybeReadNewline
-    , returnOnEOF
-    , hGetLocaleLine
+    ( module System.Console.Haskeline.Term.Layout
+    , module System.Console.Haskeline.Term
     ) where
 
 import System.Console.Haskeline.Monads
@@ -30,7 +8,7 @@ import System.Console.Haskeline.LineState
 import System.Console.Haskeline.Key
 import System.Console.Haskeline.Prefs(Prefs)
 import System.Console.Haskeline.Completion(Completion)
-import System.Console.Haskeline.Backend.Layout
+import System.Console.Haskeline.Term.Layout
 
 import Control.Concurrent
 import Control.Concurrent.STM

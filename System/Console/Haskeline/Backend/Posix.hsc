@@ -35,7 +35,7 @@ import System.Environment
 import System.Console.Haskeline.Monads
 import System.Console.Haskeline.Key
 import System.Console.Haskeline.Term as Term
-import System.Console.Haskeline.Backend.WidthPolicy
+import System.Console.Haskeline.Term.WidthPolicy
 import System.Console.Haskeline.Prefs
 
 import System.Console.Haskeline.Backend.Posix.Encoder

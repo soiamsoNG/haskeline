@@ -47,7 +47,7 @@ import System.Console.Haskeline.Key
 import System.Console.Haskeline.Monads
 import System.Console.Haskeline.LineState
 import System.Console.Haskeline.Term
-import System.Console.Haskeline.Backend.WidthPolicy
+import System.Console.Haskeline.Term.WidthPolicy
 import System.Console.Haskeline.Backend.WCWidth ( gsWidthM, splitAtWidthM )
 import System.Console.Haskeline.Backend.Win32.Echo (hWithoutInputEcho)
 

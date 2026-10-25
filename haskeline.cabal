@@ -92,9 +92,7 @@ Library
                 System.Console.Haskeline.ReaderT
     Other-Modules:
                 System.Console.Haskeline.Backend
-                System.Console.Haskeline.Backend.Layout
                 System.Console.Haskeline.Backend.WCWidth
-                System.Console.Haskeline.Backend.WidthPolicy
                 System.Console.Haskeline.Command
                 System.Console.Haskeline.Command.Completion
                 System.Console.Haskeline.Command.History
@@ -109,6 +107,8 @@ Library
                 System.Console.Haskeline.Recover
                 System.Console.Haskeline.RunCommand
                 System.Console.Haskeline.Term
+                System.Console.Haskeline.Term.Layout
+                System.Console.Haskeline.Term.WidthPolicy
                 System.Console.Haskeline.Command.Undo
                 System.Console.Haskeline.Vi
     include-dirs: includes

@@ -6,7 +6,7 @@
 -- terminals draw the whole cluster as one glyph and advance two columns.
 -- There is no portable query for this policy, so we keep it as an explicit
 -- value instead of baking one terminal's behaviour into the width tables.
-module System.Console.Haskeline.Backend.WidthPolicy
+module System.Console.Haskeline.Term.WidthPolicy
     ( WidthPolicy(..)
     , defaultWidthPolicy
     , detectWidthPolicy

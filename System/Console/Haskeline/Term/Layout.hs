@@ -1,8 +1,8 @@
-module System.Console.Haskeline.Backend.Layout(
+module System.Console.Haskeline.Term.Layout(
                             Layout(..)
                             ) where
 
-import System.Console.Haskeline.Backend.WidthPolicy
+import System.Console.Haskeline.Term.WidthPolicy
 
 -- | The current terminal geometry and the width policy used to interpret
 -- grapheme clusters.
