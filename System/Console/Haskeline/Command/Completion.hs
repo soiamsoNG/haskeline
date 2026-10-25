@@ -5,7 +5,7 @@ module System.Console.Haskeline.Command.Completion(
                             completionCmd
                             ) where
 
-import System.Console.Haskeline.Backend.WCWidth (WidthPolicy, gsWidthWith)
+import System.Console.Haskeline.Backend.WCWidth (gsWidthFor)
 import System.Console.Haskeline.Command
 import System.Console.Haskeline.Command.Undo
 import System.Console.Haskeline.Key
@@ -122,27 +122,26 @@ makeLines :: [String] -> Layout -> [String]
 makeLines ws layout = let
     minColPad = 2
     printWidth = width layout
-    policy = widthPolicy layout
-    maxWidth = min printWidth (maximum (map (gsWidthWith policy . stringToGraphemes) ws) + minColPad)
+    maxWidth = min printWidth (maximum (map (gsWidthFor layout . stringToGraphemes) ws) + minColPad)
     numCols = printWidth `div` maxWidth
     ls = if maxWidth >= printWidth
                     then map (: []) ws
                     else splitIntoGroups numCols ws
-    in map (padWords policy maxWidth) ls
+    in map (padWords layout maxWidth) ls
 
 -- Add spaces to the end of each word so that it takes up the given visual width.
 -- Don't pad the word in the last column, since printing a space in the last column
 -- causes a line wrap on some terminals.
-padWords :: WidthPolicy -> Int -> [String] -> String
+padWords :: Layout -> Int -> [String] -> String
 padWords _ _ [x] = x
 padWords _ _ [] = ""
-padWords policy wid (x:xs) = x ++ replicate (wid - widthOf x) ' '
-                        ++ padWords policy wid xs
+padWords layout wid (x:xs) = x ++ replicate (wid - widthOf x) ' '
+                        ++ padWords layout wid xs
     where
         -- kludge: compute the width in graphemes, not chars.
         -- also use graphemes for the max width so that multi-width characters
         -- such as CJK letters are aligned correctly.
-        widthOf = gsWidthWith policy . stringToGraphemes
+        widthOf = gsWidthFor layout . stringToGraphemes
 
 -- Split xs into rows of length n,
 -- such that the list increases incrementally along the columns.

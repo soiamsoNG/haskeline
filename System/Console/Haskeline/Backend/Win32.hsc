@@ -47,8 +47,8 @@ import System.Console.Haskeline.Key
 import System.Console.Haskeline.Monads
 import System.Console.Haskeline.LineState
 import System.Console.Haskeline.Term
-import System.Console.Haskeline.Backend.WCWidth
 import System.Console.Haskeline.Backend.WidthPolicy
+import System.Console.Haskeline.Backend.WCWidth ( gsWidthM, splitAtWidthM )
 import System.Console.Haskeline.Backend.Win32.Echo (hWithoutInputEcho)
 
 import Data.ByteString.Internal (createAndTrim)
@@ -332,56 +332,57 @@ printAfter gs = do
     movePosLeft gs
 
 drawLineDiffWin :: LineChars -> LineChars -> DrawM ()
-drawLineDiffWin (xs1,ys1) (xs2,ys2) = do
-    policy <- asks widthPolicy
-    case matchInit xs1 xs2 of
-      ([],[])     | ys1 == ys2            -> return ()
-      (xs1',[])   | xs1' ++ ys1 == ys2    -> movePosLeft xs1'
-      ([],xs2')   | ys1 == xs2' ++ ys2    -> movePosRight xs2'
-      (xs1',xs2')                         -> do
-        movePosLeft xs1'
-        let m = gsWidthWith policy xs1' + gsWidthWith policy ys1
-                    - (gsWidthWith policy xs2' + gsWidthWith policy ys2)
-        let deadText = stringToGraphemes $ replicate m ' '
-        printText (graphemesToString xs2')
-        printAfter (ys2 ++ deadText)
+drawLineDiffWin (xs1,ys1) (xs2,ys2) = case matchInit xs1 xs2 of
+  ([],[])     | ys1 == ys2            -> return ()
+  (xs1',[])   | xs1' ++ ys1 == ys2    -> movePosLeft xs1'
+  ([],xs2')   | ys1 == xs2' ++ ys2    -> movePosRight xs2'
+  (xs1',xs2')                         -> do
+    movePosLeft xs1'
+    xw1 <- gsWidthM xs1'
+    yw1 <- gsWidthM ys1
+    xw2 <- gsWidthM xs2'
+    yw2 <- gsWidthM ys2
+    let m = xw1 + yw1 - xw2 - yw2
+    let deadText = stringToGraphemes $ replicate m ' '
+    printText (graphemesToString xs2')
+    printAfter (ys2 ++ deadText)
 
 movePosRight, movePosLeft :: [Grapheme] -> DrawM ()
 movePosRight str = do
     p <- getPos
     w <- asks width
-    policy <- asks widthPolicy
-    setPos $ moveCoord policy w p str
+    setPos =<< moveCoord w p str
   where
-    moveCoord _ _ p [] = p
-    moveCoord policy w p cs = case splitAtWidthWith policy (w - coordX p) cs of
-                        (_,[],len) | len < w - coordX p -- stayed on same line
-                            -> Coord { coordY = coordY p,
-                                       coordX = coordX p + len
-                                     }
-                        (_,cs',_) -- moved to next line
-                            -> moveCoord policy w Coord {
-                                            coordY = coordY p + 1,
-                                            coordX = 0
-                                           } cs'
+    moveCoord _ p [] = return p
+    moveCoord w p cs = do
+        (_,rest,len) <- splitAtWidthM (w - coordX p) cs
+        case rest of
+            [] | len < w - coordX p -- stayed on same line
+                -> return Coord { coordY = coordY p,
+                                  coordX = coordX p + len
+                                }
+            _ -> moveCoord w Coord {
+                            coordY = coordY p + 1,
+                            coordX = 0
+                           } (drop 1 rest)
 
 movePosLeft str = do
     p <- getPos
     w <- asks width
-    policy <- asks widthPolicy
-    setPos $ moveCoord policy w p str
+    setPos =<< moveCoord w p str
   where
-    moveCoord _ _ p [] = p
-    moveCoord policy w p cs = case splitAtWidthWith policy (coordX p) cs of
-                        (_,[],len) -- stayed on same line
-                            -> Coord { coordY = coordY p,
-                                       coordX = coordX p - len
-                                     }
-                        (_,_:cs',_) -- moved to previous line
-                            -> moveCoord policy w Coord {
-                                            coordY = coordY p - 1,
-                                            coordX = w-1
-                                           } cs'
+    moveCoord _ p [] = return p
+    moveCoord w p cs = do
+        (_,rest,len) <- splitAtWidthM (coordX p) cs
+        case rest of
+            [] -- stayed on same line
+                -> return Coord { coordY = coordY p,
+                                  coordX = coordX p - len
+                                }
+            _:_ -> moveCoord w Coord {
+                            coordY = coordY p - 1,
+                            coordX = w-1
+                           } (drop 1 rest)
 
 crlf :: String
 crlf = "\r\n"

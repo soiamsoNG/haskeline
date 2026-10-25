@@ -92,6 +92,7 @@ Library
                 System.Console.Haskeline.ReaderT
     Other-Modules:
                 System.Console.Haskeline.Backend
+                System.Console.Haskeline.Backend.Layout
                 System.Console.Haskeline.Backend.WCWidth
                 System.Console.Haskeline.Backend.WidthPolicy
                 System.Console.Haskeline.Command

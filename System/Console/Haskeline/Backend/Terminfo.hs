@@ -10,7 +10,6 @@ module System.Console.Haskeline.Backend.Terminfo(
 import System.Console.Terminfo
 import Control.Monad
 import Control.Monad.Catch
-import Data.List(foldl')
 import System.IO
 import qualified Control.Exception as Exception
 import Data.Maybe (fromMaybe, mapMaybe)
@@ -21,6 +20,7 @@ import System.Console.Haskeline.LineState
 import System.Console.Haskeline.Term
 import System.Console.Haskeline.Backend.Posix
 import System.Console.Haskeline.Backend.WCWidth
+    ( defaultWidthPolicy, gsWidthM, splitAtWidthM )
 import System.Console.Haskeline.Key
 
 import qualified Control.Monad.Trans.Writer as Writer
@@ -276,10 +276,9 @@ printText [] = return ()
 printText gs = do
     -- First, get the monadic parameters:
     w <- asks width
-    policy <- asks widthPolicy
     TermPos {termRow=r, termCol=c} <- get
     -- Now, split off as much as will fit on the rest of this row:
-    let (thisLine,rest,thisWidth) = splitAtWidthWith policy (w-c) gs
+    (thisLine,rest,thisWidth) <- splitAtWidthM (w-c) gs
     let lineWidth = c + thisWidth
     -- Finally, actually print out the relevant text.
     outputText (graphemesToString thisLine)
@@ -296,20 +295,18 @@ printText gs = do
 -- High-level Term implementation
 
 drawLineDiffT :: LineChars -> LineChars -> ActionM ()
-drawLineDiffT (xs1,ys1) (xs2,ys2) = do
-    policy <- asks widthPolicy
-    case matchInit xs1 xs2 of
-      ([],[])     | ys1 == ys2            -> return ()
-      (xs1',[])   | xs1' ++ ys1 == ys2    -> changeLeft (gsWidthWith policy xs1')
-      ([],xs2')   | ys1 == xs2' ++ ys2    -> changeRight (gsWidthWith policy xs2')
-      (xs1',xs2')                         -> do
-        oldRS <- get
-        changeLeft (gsWidthWith policy xs1')
-        printText xs2'
-        p <- get
-        printText ys2
-        clearDeadText oldRS
-        moveToPos p
+drawLineDiffT (xs1,ys1) (xs2,ys2) = case matchInit xs1 xs2 of
+  ([],[])     | ys1 == ys2            -> return ()
+  (xs1',[])   | xs1' ++ ys1 == ys2    -> gsWidthM xs1' >>= changeLeft
+  ([],xs2')   | ys1 == xs2' ++ ys2    -> gsWidthM xs2' >>= changeRight
+  (xs1',xs2')                         -> do
+    oldRS <- get
+    gsWidthM xs1' >>= changeLeft
+    printText xs2'
+    p <- get
+    printText ys2
+    clearDeadText oldRS
+    moveToPos p
 
 -- The number of nonempty lines after the current row position.
 getLinesLeft :: ActionM Int

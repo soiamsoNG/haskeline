@@ -1,11 +1,36 @@
-module System.Console.Haskeline.Term where
+module System.Console.Haskeline.Term
+    ( module System.Console.Haskeline.Backend.Layout
+    , Term(..)
+    , RunTerm(..)
+    , TermOps(..)
+    , FileOps(..)
+    , EvalTerm(..)
+    , Interrupt(..)
+    , CommandMonad(..)
+    , Event(..)
+    , drawLine
+    , clearLine
+    , flushEventQueue
+    , isTerminalStyle
+    , mapEvalTerm
+    , matchInit
+    , keyEventLoop
+    , saveKeys
+    , hWithBinaryMode
+    , bracketSet
+    , hGetByte
+    , guardedEOF
+    , hMaybeReadNewline
+    , returnOnEOF
+    , hGetLocaleLine
+    ) where
 
 import System.Console.Haskeline.Monads
 import System.Console.Haskeline.LineState
 import System.Console.Haskeline.Key
 import System.Console.Haskeline.Prefs(Prefs)
 import System.Console.Haskeline.Completion(Completion)
-import System.Console.Haskeline.Backend.WidthPolicy
+import System.Console.Haskeline.Backend.Layout
 
 import Control.Concurrent
 import Control.Concurrent.STM
@@ -154,9 +179,6 @@ keyEventLoop readEvents eventChan = do
 
 saveKeys :: TChan Event -> [Key] -> IO ()
 saveKeys ch = atomically . writeTChan ch . KeyInput
-
-data Layout = Layout {width, height :: Int, widthPolicy :: WidthPolicy}
-                    deriving (Show,Eq)
 
 -----------------------------------
 -- Utility functions for the various backends.

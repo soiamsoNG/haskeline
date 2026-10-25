@@ -6,21 +6,31 @@ module System.Console.Haskeline.Backend.WCWidth(
                             gWidthWith,
                             gsWidth,
                             gsWidthWith,
+                            gsWidthM,
+                            gsWidthFor,
                             splitAtWidth,
                             splitAtWidthWith,
+                            splitAtWidthM,
                             takeWidth,
                             takeWidthWith,
+                            takeWidthM,
                             ) where
 
 -- Certain characters are "wide", i.e. take up two spaces in the terminal.
 -- This module wraps the necessary foreign routines, and also provides some convenience
 -- functions for width-breaking code.
 
+import System.Console.Haskeline.Backend.Layout
 import System.Console.Haskeline.Backend.WidthPolicy
 import System.Console.Haskeline.LineState
+import System.Console.Haskeline.Monads (MonadReader, asks)
 
-import Data.List (foldl')
 import Foreign.C.Types
+
+-- | Read the width policy from the current terminal's 'Layout'.
+widthPolicyM :: MonadReader Layout m => m WidthPolicy
+widthPolicyM = asks widthPolicy
+{-# INLINE widthPolicyM #-}
 
 foreign import ccall unsafe haskeline_mk_wcwidth :: CInt -> CInt
 
@@ -38,6 +48,7 @@ codepointWidth c
     | c >= ' ' && c < '\DEL' = 1
     | c < '\x80' = 0
     | otherwise = wcwidth c
+{-# INLINE codepointWidth #-}
 
 -- | The width of a grapheme under the codepoint-sum policy.  A grapheme may
 -- consist of several codepoints (for example a base character plus combining
@@ -49,7 +60,10 @@ codepointWidth c
 -- ASCII is the common case.  Avoid the FFI call and the intermediate list.
 gWidth :: Grapheme -> Int
 gWidth g = case combiningChars g of
-                [] -> codepointWidth (baseChar g)
+                [] -> case baseChar g of
+                        c | c >= ' ' && c < '\DEL' -> 1
+                          | c < '\x80' -> 0
+                          | otherwise -> wcwidth c
                 _ -> foldl' (+) 0 . map wcwidth . graphemeChars $ g
 
 -- | The width of a grapheme under the grapheme-cluster policy.  Terminals
@@ -87,7 +101,10 @@ gWidthWith GraphemeCluster = clusterWidth
 {-# INLINE gWidthWith #-}
 
 gsWidth :: [Grapheme] -> Int
-gsWidth = gsWidthWith CodepointSum
+gsWidth = go 0
+  where
+    go !w [] = w
+    go !w (g:gs) = go (w + gWidth g) gs
 
 gsWidthWith :: WidthPolicy -> [Grapheme] -> Int
 gsWidthWith policy = go 0
@@ -96,15 +113,35 @@ gsWidthWith policy = go 0
     go !w [] = w
     go !w (g:gs) = go (w + width g) gs
 
+-- | Width of a grapheme list, using the policy supplied by the current
+-- terminal monad.
+gsWidthM :: MonadReader Layout m => [Grapheme] -> m Int
+gsWidthM gs = do
+    policy <- widthPolicyM
+    return $! gsWidthWith policy gs
+{-# INLINE gsWidthM #-}
+
+-- | Pure variant for code which already has a 'Layout'.
+gsWidthFor :: Layout -> [Grapheme] -> Int
+gsWidthFor lay = gsWidthWith (widthPolicy lay)
+{-# INLINE gsWidthFor #-}
+
 -- | Split off the maximal list which is no more than the given width.
 -- returns the width of that list.
 splitAtWidth :: Int -> [Grapheme] -> ([Grapheme],[Grapheme],Int)
-splitAtWidth = splitAtWidthWith CodepointSum
+splitAtWidth n xs = case splitAtWidth' gWidth n xs of
+                        (this,rest,remaining) -> (this,rest,n-remaining)
 
 splitAtWidthWith :: WidthPolicy -> Int -> [Grapheme]
                  -> ([Grapheme],[Grapheme],Int)
 splitAtWidthWith policy n xs = case splitAtWidth' (gWidthWith policy) n xs of
                         (this,rest,remaining) -> (this,rest,n-remaining)
+
+splitAtWidthM :: MonadReader Layout m => Int -> [Grapheme]
+              -> m ([Grapheme],[Grapheme],Int)
+splitAtWidthM n gs = do
+    policy <- widthPolicyM
+    return $! splitAtWidthWith policy n gs
 
 -- Returns the amount of unused space in the line.
 splitAtWidth' :: (Grapheme -> Int) -> Int -> [Grapheme]
@@ -125,3 +162,8 @@ takeWidth = takeWidthWith CodepointSum
 takeWidthWith :: WidthPolicy -> Int -> [Grapheme] -> ([Grapheme],Int)
 takeWidthWith policy n gs = case splitAtWidthWith policy n gs of
                     (gs',_,len) -> (gs',len)
+
+takeWidthM :: MonadReader Layout m => Int -> [Grapheme] -> m ([Grapheme],Int)
+takeWidthM n gs = do
+    policy <- widthPolicyM
+    return $! takeWidthWith policy n gs
