@@ -9,9 +9,12 @@ with the following changes:
   (`ec611c5`).
 - Fast paths for ASCII widths and for the common grapheme-joining checks
   (`8176f58`, `995fb6b`).
+- A configurable terminal width policy (`c2bce96`, `005e4c6`).
+- Internal terminal modules moved under `System.Console.Haskeline.Term`
+  (`22da5d6`, `6b326f6`).
 
 The public `System.Console.Haskeline` API and the C entry points are
-unchanged.  Some internal modules are exposed through
+unchanged.  Some internal modules are now exposed through
 `System.Console.Haskeline.Internal`.
 
 ## Unicode 18 width tables
@@ -108,57 +111,68 @@ the sequence together.
 when its characters arrive one at a time from the terminal.  The keymap
 accepts these characters even though they are not `isPrint`.
 
-## Width behaviour
+## Width policy
 
-`gWidth` adds the widths of all codepoints in a grapheme.  This matches VTE,
-which lays out the codepoints separately.  The family emoji is eight columns
-wide because its four emoji components are each two columns wide and the
-joiners are zero-width.
+Terminals disagree about the cursor advance for one grapheme cluster.  VTE
+lays out the codepoints separately and advances by the sum of their widths.
+kitty, WezTerm, Ghostty and some newer terminals draw the whole cluster as
+one glyph and advance by the rendered cluster width.  There is no portable
+terminal query for this choice, so Haskeline carries an explicit
+`WidthPolicy` in its internal `Layout`:
 
-| Sequence | Codepoints | Width |
-| --- | --- | ---: |
-| `❤️` | `U+2764 U+FE0F` | 1 |
-| `👍🏻` | `U+1F44D U+1F3FB` | 4 |
-| `1️⃣` | `U+0031 U+FE0F U+20E3` | 1 |
-| `🇨🇳` | `U+1F1E8 U+1F1F3` | 2 |
-| `👨‍👩‍👧‍👦` | 7 codepoints | 8 |
+| Policy | Behaviour |
+| --- | --- |
+| `CodepointSum` | Sum the widths of all codepoints in the cluster.  This is the default and matches VTE. |
+| `GraphemeCluster` | Use the width of the rendered cluster.  A regional-indicator pair, VS16 sequence or keycap sequence is 2 columns; otherwise the widest codepoint wins. |
 
-This is a cursor-width model, not a model of every terminal's rendering.
-Terminals such as kitty and WezTerm draw a cluster as one glyph and may
-advance only two columns for the last two sequences.  This branch has no
-terminal width policy; see the `width-policy-1` branch for that work.
+For the sequences in the table below:
+
+| Sequence | `CodepointSum` | `GraphemeCluster` |
+| --- | ---: | ---: |
+| `❤️` (`U+2764 U+FE0F`) | 1 | 2 |
+| `1️⃣` (`U+0031 U+FE0F U+20E3`) | 1 | 2 |
+| `🇨🇳` (`U+1F1E8 U+1F1F3`) | 2 | 2 |
+| `👨‍👩‍👧‍👦` | 8 | 2 |
+
+The policy is detected once when a terminal backend starts:
+
+- `VTE_VERSION` selects `CodepointSum`;
+- `KITTY_WINDOW_ID`, `WEZTERM_PANE`, `TERM=xterm-kitty`,
+  `TERM=xterm-ghostty`, `TERM_PROGRAM=wezterm` or `TERM_PROGRAM=ghostty`
+  select `GraphemeCluster`;
+- unknown terminals keep the historical `CodepointSum` behaviour.
+
+`HASKELINE_WIDTH_POLICY=codepoint` or
+`HASKELINE_WIDTH_POLICY=grapheme` overrides detection.  This is also used by
+the regression tests.
 
 ## Benchmarks
 
-The cumulative changes were compared with upstream `bbedb` (`bbedbc9`) using
-GHC 9.14.1 and `-O2` on x86-64 Linux.  The two binaries were run alternately
-for seven rounds; the table reports the median.
+The width-policy implementation was compared with `995fb6b`, before the
+policy abstraction, using GHC 9.14.1 and `-O2` on x86-64 Linux.  The
+workloads were 500,000 ASCII characters, 200,000 Hangul characters, 50,000
+emoji family clusters and 100,000 mixed characters.
 
-The segmentation and width benchmarks use 500,000 characters, the insertion
-benchmarks use 200,000 characters, and the typing benchmarks use 150,000
-characters.
+Each binary ran seven iterations after a warm-up.  The two binaries were run
+alternately for 24 rounds; the table reports the median of those rounds.
+Lower is better.
 
-| Benchmark | `bbedb` | this branch | Change |
+| Benchmark | `995fb6b` | width policy | Change |
 | --- | ---: | ---: | ---: |
-| width/ascii | 21.34 ms | 18.50 ms | -13.3% |
-| width/random | 20.65 ms | 16.28 ms | -21.1% |
-| width/chinese | 15.07 ms | 12.37 ms | -17.9% |
-| width/mixed | 9.88 ms | 6.53 ms | -33.9% |
-| insert/ascii | 19.38 ms | 17.78 ms | -8.2% |
-| insert/random | 30.99 ms | 21.26 ms | -31.4% |
-| insert/chinese | 28.85 ms | 25.32 ms | -12.2% |
-| insert/mixed | 24.77 ms | 24.58 ms | -0.8% |
-| type/ascii | 16.73 ms | 14.87 ms | -11.2% |
-| type/random | 20.62 ms | 18.66 ms | -9.5% |
-| type/mixed | 27.50 ms | 26.06 ms | -5.2% |
-| splitall/mixed | 29.44 ms | 25.55 ms | -13.2% |
+| width/ascii | 19.19 ms | 18.89 ms | -1.6% |
+| width/hangul | 10.88 ms | 10.85 ms | -0.2% |
+| width/family | 6.32 ms | 6.32 ms | 0.0% |
+| width/mixed | 19.02 ms | 19.40 ms | +2.0% |
+| segment/mixed | 74.60 ms | 76.81 ms | +3.0% |
+| insert/ascii | 54.99 ms | 52.31 ms | -4.9% |
+| insert/mixed | 101.69 ms | 100.92 ms | -0.8% |
+| type/ascii | 17.92 ms | 17.26 ms | -3.7% |
+| type/family | 10.72 ms | 10.84 ms | +1.1% |
 
-Emoji benchmarks are not directly comparable: `bbedb` treats a family
-sequence as seven graphemes, while this branch treats it as one.  The
-remaining comparisons are microbenchmarks for segmentation, width
-calculation and line-state updates; they do not measure terminal rendering
-or interactive latency.  The `insert/random` median also has noticeable
-run-to-run variance.
+The policy dispatch does not introduce a consistent regression: most results
+are within ±3%, and the ASCII insertion path is slightly faster.  These are
+microbenchmarks for segmentation, width calculation and line-state updates;
+they do not measure terminal rendering or interactive latency.
 
 ## Verification
 
@@ -166,39 +180,42 @@ run-to-run variance.
   above, for both the default and CJK variants.  No differences were found.
 - `cbits/h_wcwidth.c` compiles as C89 with
   `gcc -std=c89 -pedantic -Wall -Wextra` without warnings.
-- `cabal build all` succeeds and `cabal test` passes all 68 tests.
-- The regression tests cover ASCII, Hangul, combining marks and ZWJ family
-  sequences.
+- `cabal build all` succeeds and `cabal test` passes all 72 tests.
+- The regression tests cover ASCII, Hangul, combining marks, ZWJ family
+  sequences, VS16, keycaps and flags, under both width policies.
 - There is still no direct unit test for the C width function; the existing
   tests cover it indirectly through pseudoterminal interactions.
 
 ## Known limitations
 
-The width function is terminal-independent and uses the VTE-style
-codepoint-sum model.  A terminal that composes grapheme clusters into one
-glyph can therefore advance by fewer columns than Haskeline expects.
+The width policy is selected from environment variables, not by querying the
+terminal.  An unknown terminal that renders grapheme clusters as single
+glyphs will use `CodepointSum` and may advance too far.
 
 VTE does not compose ZWJ emoji into one glyph.  A family sequence is drawn as
-four separate emoji, and this implementation advances eight columns for that
-rendering, but the visual result differs from terminals that compose the
+four separate emoji, and `CodepointSum` correctly advances eight columns for
+that rendering, but the visual result differs from terminals that compose the
 sequence.
 
-The grapheme joining rules cover common emoji and Hangul cases, but are not a
-complete implementation of UAX #29.  `isExtendedPictographic` is a
-deliberately broad approximation.
+`GraphemeCluster` width is a heuristic.  It handles the common emoji cases
+listed above, but it is not a complete implementation of UAX #29 or of a
+terminal's cell layout.  Hangul joining is limited to the L/V/T rules above.
+
+The Windows backend has been updated to use the policy, but has not been
+compiled or tested on Windows in this environment.
 
 ## Possible follow-ups
 
-These are not implemented in this branch.
+These are not implemented in this fork.
 
-1. Add a terminal width policy, so terminals that compose grapheme clusters
-   can use cluster width instead of codepoint-sum width.  This is implemented
-   on the `width-policy-1` branch.
-2. Add a direct FFI test suite for `haskeline_mk_wcwidth` and
+1. Add a direct FFI test suite for `haskeline_mk_wcwidth` and
    `haskeline_mk_wcwidth_cjk`, including control characters, combining
    characters, `U+00AD`, the overlapping ranges, page boundaries, the
    ambiguous table and the CJK variant.
-3. Implement full UAX #29 grapheme segmentation and cluster widths.
+2. Implement full UAX #29 grapheme segmentation and cluster widths, including
+   terminal-specific cell layout where it can be detected.
+3. Document `HASKELINE_WIDTH_POLICY` in the user-facing manual rather than
+   only in the changelog and this file.
 4. Test the Windows backend on a real Windows terminal.
 
 ## Building and testing
