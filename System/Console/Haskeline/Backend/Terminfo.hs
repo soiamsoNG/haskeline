@@ -149,7 +149,7 @@ tinfoLayout :: Terminal -> IO (Maybe Layout)
 tinfoLayout term = return $ getCapability term $ do
                         c <- termColumns
                         r <- termLines
-                        return Layout {height=r,width=c}
+                        return Layout {height=r,width=c,widthPolicy=defaultWidthPolicy}
 
 terminfoKeys :: Terminal -> [(String,Key)]
 terminfoKeys term = mapMaybe getSequence keyCapabilities
@@ -276,9 +276,10 @@ printText [] = return ()
 printText gs = do
     -- First, get the monadic parameters:
     w <- asks width
+    policy <- asks widthPolicy
     TermPos {termRow=r, termCol=c} <- get
     -- Now, split off as much as will fit on the rest of this row:
-    let (thisLine,rest,thisWidth) = splitAtWidth (w-c) gs
+    let (thisLine,rest,thisWidth) = splitAtWidthWith policy (w-c) gs
     let lineWidth = c + thisWidth
     -- Finally, actually print out the relevant text.
     outputText (graphemesToString thisLine)
@@ -295,13 +296,15 @@ printText gs = do
 -- High-level Term implementation
 
 drawLineDiffT :: LineChars -> LineChars -> ActionM ()
-drawLineDiffT (xs1,ys1) (xs2,ys2) = case matchInit xs1 xs2 of
-    ([],[])     | ys1 == ys2            -> return ()
-    (xs1',[])   | xs1' ++ ys1 == ys2    -> changeLeft (gsWidth xs1')
-    ([],xs2')   | ys1 == xs2' ++ ys2    -> changeRight (gsWidth xs2')
-    (xs1',xs2')                         -> do
+drawLineDiffT (xs1,ys1) (xs2,ys2) = do
+    policy <- asks widthPolicy
+    case matchInit xs1 xs2 of
+      ([],[])     | ys1 == ys2            -> return ()
+      (xs1',[])   | xs1' ++ ys1 == ys2    -> changeLeft (gsWidthWith policy xs1')
+      ([],xs2')   | ys1 == xs2' ++ ys2    -> changeRight (gsWidthWith policy xs2')
+      (xs1',xs2')                         -> do
         oldRS <- get
-        changeLeft (gsWidth xs1')
+        changeLeft (gsWidthWith policy xs1')
         printText xs2'
         p <- get
         printText ys2

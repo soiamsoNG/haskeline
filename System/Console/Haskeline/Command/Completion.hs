@@ -5,7 +5,7 @@ module System.Console.Haskeline.Command.Completion(
                             completionCmd
                             ) where
 
-import System.Console.Haskeline.Backend.WCWidth (gsWidth)
+import System.Console.Haskeline.Backend.WCWidth (WidthPolicy, gsWidthWith)
 import System.Console.Haskeline.Command
 import System.Console.Haskeline.Command.Undo
 import System.Console.Haskeline.Key
@@ -122,26 +122,27 @@ makeLines :: [String] -> Layout -> [String]
 makeLines ws layout = let
     minColPad = 2
     printWidth = width layout
-    maxWidth = min printWidth (maximum (map (gsWidth . stringToGraphemes) ws) + minColPad)
+    policy = widthPolicy layout
+    maxWidth = min printWidth (maximum (map (gsWidthWith policy . stringToGraphemes) ws) + minColPad)
     numCols = printWidth `div` maxWidth
     ls = if maxWidth >= printWidth
                     then map (: []) ws
                     else splitIntoGroups numCols ws
-    in map (padWords maxWidth) ls
+    in map (padWords policy maxWidth) ls
 
 -- Add spaces to the end of each word so that it takes up the given visual width.
 -- Don't pad the word in the last column, since printing a space in the last column
 -- causes a line wrap on some terminals.
-padWords :: Int -> [String] -> String
-padWords _ [x] = x
-padWords _ [] = ""
-padWords wid (x:xs) = x ++ replicate (wid - widthOf x) ' '
-                        ++ padWords wid xs
+padWords :: WidthPolicy -> Int -> [String] -> String
+padWords _ _ [x] = x
+padWords _ _ [] = ""
+padWords policy wid (x:xs) = x ++ replicate (wid - widthOf x) ' '
+                        ++ padWords policy wid xs
     where
         -- kludge: compute the width in graphemes, not chars.
         -- also use graphemes for the max width so that multi-width characters
         -- such as CJK letters are aligned correctly.
-        widthOf = gsWidth . stringToGraphemes
+        widthOf = gsWidthWith policy . stringToGraphemes
 
 -- Split xs into rows of length n,
 -- such that the list increases incrementally along the columns.

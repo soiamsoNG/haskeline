@@ -35,6 +35,7 @@ import System.Environment
 import System.Console.Haskeline.Monads
 import System.Console.Haskeline.Key
 import System.Console.Haskeline.Term as Term
+import System.Console.Haskeline.Backend.WidthPolicy
 import System.Console.Haskeline.Prefs
 
 import System.Console.Haskeline.Backend.Posix.Encoder
@@ -82,7 +83,7 @@ ioctlLayout h = allocaBytes (#size struct winsize) $ \ws -> do
                 rows :: CUShort <- (#peek struct winsize,ws_row) ws
                 cols :: CUShort <- (#peek struct winsize,ws_col) ws
                 if ret >= 0
-                    then return $ Just Layout {height=fromEnum rows,width=fromEnum cols}
+                    then return $ Just Layout {height=fromEnum rows,width=fromEnum cols,widthPolicy=defaultWidthPolicy}
                     else return Nothing
 
 #endif
@@ -101,10 +102,10 @@ envLayout = handle (\(_::IOException) -> return Nothing) $ do
     -- note the handle catches both undefined envs and bad reads
     r <- getEnv "ROWS"
     c <- getEnv "COLUMNS"
-    return $ Just $ Layout {height=read r,width=read c}
+    return $ Just $ Layout {height=read r,width=read c,widthPolicy=defaultWidthPolicy}
 
 tryGetLayouts :: [IO (Maybe Layout)] -> IO Layout
-tryGetLayouts [] = return Layout {height=24,width=80}
+tryGetLayouts [] = return Layout {height=24,width=80,widthPolicy=defaultWidthPolicy}
 tryGetLayouts (f:fs) = do
     ml <- f
     case ml of
@@ -380,11 +381,14 @@ posixRunTerm ::
     -> (forall m . (MonadMask m, CommandMonad m) => EvalTerm (PosixT m))
     -> IO RunTerm
 posixRunTerm hs layoutGetters keys wrapGetEvent evalBackend = do
+    policy <- detectWidthPolicy
     ch <- newTChanIO
     fileRT <- posixFileRunTerm hs
     return fileRT
                 { termOps = Left TermOps
-                            { getLayout = tryGetLayouts layoutGetters
+                            { getLayout = do
+                                            l <- tryGetLayouts layoutGetters
+                                            return l {widthPolicy = policy}
                             , withGetEvent = wrapGetEvent
                                             . withPosixGetEvent ch hs
                                                 keys

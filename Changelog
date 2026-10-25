@@ -1,5 +1,15 @@
 Changed in version 8.4.5.0:
 
+   * Emoji ZWJ sequences, variation selectors and keycaps are now treated as
+     single graphemes, so editing them moves over the whole sequence.
+
+   * Added a configurable terminal width policy.  The default sums the widths
+     of the codepoints in a grapheme cluster (VTE-style); terminal types that
+     draw a cluster as one glyph can use grapheme-cluster width instead.
+     Detection uses `VTE_VERSION`, `KITTY_WINDOW_ID`, `WEZTERM_PANE`, `TERM`
+     and `TERM_PROGRAM`; set `HASKELINE_WIDTH_POLICY=codepoint` or
+     `HASKELINE_WIDTH_POLICY=grapheme` to override it.
+
    * System.Console.Haskeline.Internal now exposes far more internals of
      Haskeline.
 
