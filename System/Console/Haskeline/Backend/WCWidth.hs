@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 module System.Console.Haskeline.Backend.WCWidth(
                             gsWidth,
                             splitAtWidth,
@@ -15,6 +16,7 @@ import Foreign.C.Types
 
 foreign import ccall unsafe haskeline_mk_wcwidth :: CInt -> CInt
 
+{-# INLINE wcwidth #-}
 wcwidth :: Char -> Int
 wcwidth c = case haskeline_mk_wcwidth $ toEnum $ fromEnum c of
                 -1 -> 0 -- Control characters have zero width.  (Used by the
@@ -28,11 +30,21 @@ wcwidth c = case haskeline_mk_wcwidth $ toEnum $ fromEnum c of
 -- sequences: the family emoji is eight columns wide, because its four
 -- emoji components are each two columns wide while the joiners are
 -- zero-width.  
+-- ASCII is the common case.  Avoid the FFI call and the intermediate
+-- list; control characters (including DEL) have width zero.
 gWidth :: Grapheme -> Int
-gWidth = foldl' (+) 0 . map wcwidth . graphemeChars
+gWidth g = case combiningChars g of
+                [] -> case baseChar g of
+                        c | c >= ' ' && c < '\DEL' -> 1
+                          | c < '\x80' -> 0
+                          | otherwise -> wcwidth c
+                _ -> foldl' (+) 0 . map wcwidth . graphemeChars $ g
 
 gsWidth :: [Grapheme] -> Int
-gsWidth = foldl' (+) 0 . map gWidth
+gsWidth = go 0
+  where
+    go !w [] = w
+    go !w (g:gs) = go (w + gWidth g) gs
 
 -- | Split off the maximal list which is no more than the given width.
 -- returns the width of that list.

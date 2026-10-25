@@ -6,6 +6,7 @@ module System.Console.Haskeline.LineState(
                     Grapheme(),
                     baseChar,
                     graphemeChars,
+                    combiningChars,
                     isCombiningChar,
                     stringToGraphemes,
                     graphemesToString,
