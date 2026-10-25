@@ -65,6 +65,7 @@ main = do
         -- explicit term type — so we skip it for that mode.
         , dumbTests UseTerm i
         , dumbTests UseTermHandles i
+        , graphemePolicyTests (setMode UseTerm i)
         , fileStyleTests i
         ]
     when (errors result > 0 || failures result > 0) exitFailure
@@ -151,6 +152,25 @@ unicodeMovement i = "Unicode movement" ~:
     (lwc3,_lwcs3) = T.splitAt (80`div`2) lwcs2
     -- lwc3 has length 90 - (80-2)/2 - 80/2 = 11,
     -- so the last line as wide width 2*11=22.
+
+graphemePolicyTests :: Invocation -> Test
+graphemePolicyTests i = "grapheme width policy" ~: test
+    [ "emoji ZWJ cluster" ~: utf8Test i' [utf8 fam, utf8 "\ESC[Dx"]
+        [prompt 0, utf8 fam, utf8 "\ESC[2Dx" <> utf8 fam <> utf8 "\ESC[2D"]
+    , "emoji presentation" ~: utf8Test i' [utf8 heart, utf8 "\ESC[Dx"]
+        [prompt 0, utf8 heart, utf8 "\ESC[2Dx" <> utf8 heart <> utf8 "\ESC[2D"]
+    , "keycap" ~: utf8Test i' [utf8 keycap, utf8 "\ESC[Dx"]
+        [prompt 0, utf8 keycap, utf8 "\ESC[2Dx" <> utf8 keycap <> utf8 "\ESC[2D"]
+    , "regional indicator" ~: utf8Test i' [utf8 flag, utf8 "\ESC[Dx"]
+        [prompt 0, utf8 flag, utf8 "\ESC[2Dx" <> utf8 flag <> utf8 "\ESC[2D"]
+    ]
+  where
+    i' = i { environment = ("HASKELINE_WIDTH_POLICY", "grapheme")
+                                : environment i }
+    fam = "\128104\8205\128105\8205\128103\8205\128102"
+    heart = "\x2764\xFE0F"
+    keycap = "1\xFE0F\x20E3"
+    flag = "\x1F1E8\x1F1F3"
 
 tabCompletion :: Invocation -> Test
 tabCompletion i = "tab completion" ~:

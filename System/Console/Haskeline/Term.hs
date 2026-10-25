@@ -5,6 +5,7 @@ import System.Console.Haskeline.LineState
 import System.Console.Haskeline.Key
 import System.Console.Haskeline.Prefs(Prefs)
 import System.Console.Haskeline.Completion(Completion)
+import System.Console.Haskeline.Backend.WidthPolicy
 
 import Control.Concurrent
 import Control.Concurrent.STM
@@ -154,7 +155,7 @@ keyEventLoop readEvents eventChan = do
 saveKeys :: TChan Event -> [Key] -> IO ()
 saveKeys ch = atomically . writeTChan ch . KeyInput
 
-data Layout = Layout {width, height :: Int}
+data Layout = Layout {width, height :: Int, widthPolicy :: WidthPolicy}
                     deriving (Show,Eq)
 
 -----------------------------------

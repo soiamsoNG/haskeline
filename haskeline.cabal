@@ -93,6 +93,7 @@ Library
     Other-Modules:
                 System.Console.Haskeline.Backend
                 System.Console.Haskeline.Backend.WCWidth
+                System.Console.Haskeline.Backend.WidthPolicy
                 System.Console.Haskeline.Command
                 System.Console.Haskeline.Command.Completion
                 System.Console.Haskeline.Command.History

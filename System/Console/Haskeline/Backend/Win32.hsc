@@ -48,6 +48,7 @@ import System.Console.Haskeline.Monads
 import System.Console.Haskeline.LineState
 import System.Console.Haskeline.Term
 import System.Console.Haskeline.Backend.WCWidth
+import System.Console.Haskeline.Backend.WidthPolicy
 import System.Console.Haskeline.Backend.Win32.Echo (hWithoutInputEcho)
 
 import Data.ByteString.Internal (createAndTrim)
@@ -235,7 +236,7 @@ withScreenBufferInfo f h = allocaBytes (#size CONSOLE_SCREEN_BUFFER_INFO)
 getBufferSize :: HANDLE -> IO Layout
 getBufferSize = withScreenBufferInfo $ \p -> do
     c <- (#peek CONSOLE_SCREEN_BUFFER_INFO, dwSize) p
-    return Layout {width = coordX c, height = coordY c}
+    return Layout {width = coordX c, height = coordY c, widthPolicy = defaultWidthPolicy}
 
 foreign import WINDOWS_CCONV "windows.h WriteConsoleW" c_WriteConsoleW
     :: HANDLE -> Ptr TCHAR -> DWORD -> Ptr DWORD -> Ptr () -> IO Bool
@@ -331,13 +332,16 @@ printAfter gs = do
     movePosLeft gs
 
 drawLineDiffWin :: LineChars -> LineChars -> DrawM ()
-drawLineDiffWin (xs1,ys1) (xs2,ys2) = case matchInit xs1 xs2 of
-    ([],[])     | ys1 == ys2            -> return ()
-    (xs1',[])   | xs1' ++ ys1 == ys2    -> movePosLeft xs1'
-    ([],xs2')   | ys1 == xs2' ++ ys2    -> movePosRight xs2'
-    (xs1',xs2')                         -> do
+drawLineDiffWin (xs1,ys1) (xs2,ys2) = do
+    policy <- asks widthPolicy
+    case matchInit xs1 xs2 of
+      ([],[])     | ys1 == ys2            -> return ()
+      (xs1',[])   | xs1' ++ ys1 == ys2    -> movePosLeft xs1'
+      ([],xs2')   | ys1 == xs2' ++ ys2    -> movePosRight xs2'
+      (xs1',xs2')                         -> do
         movePosLeft xs1'
-        let m = gsWidth xs1' + gsWidth ys1 - (gsWidth xs2' + gsWidth ys2)
+        let m = gsWidthWith policy xs1' + gsWidthWith policy ys1
+                    - (gsWidthWith policy xs2' + gsWidthWith policy ys2)
         let deadText = stringToGraphemes $ replicate m ' '
         printText (graphemesToString xs2')
         printAfter (ys2 ++ deadText)
@@ -346,16 +350,17 @@ movePosRight, movePosLeft :: [Grapheme] -> DrawM ()
 movePosRight str = do
     p <- getPos
     w <- asks width
-    setPos $ moveCoord w p str
+    policy <- asks widthPolicy
+    setPos $ moveCoord policy w p str
   where
-    moveCoord _ p [] = p
-    moveCoord w p cs = case splitAtWidth (w - coordX p) cs of
+    moveCoord _ _ p [] = p
+    moveCoord policy w p cs = case splitAtWidthWith policy (w - coordX p) cs of
                         (_,[],len) | len < w - coordX p -- stayed on same line
                             -> Coord { coordY = coordY p,
                                        coordX = coordX p + len
                                      }
                         (_,cs',_) -- moved to next line
-                            -> moveCoord w Coord {
+                            -> moveCoord policy w Coord {
                                             coordY = coordY p + 1,
                                             coordX = 0
                                            } cs'
@@ -363,16 +368,17 @@ movePosRight str = do
 movePosLeft str = do
     p <- getPos
     w <- asks width
-    setPos $ moveCoord w p str
+    policy <- asks widthPolicy
+    setPos $ moveCoord policy w p str
   where
-    moveCoord _ p [] = p
-    moveCoord w p cs = case splitAtWidth (coordX p) cs of
+    moveCoord _ _ p [] = p
+    moveCoord policy w p cs = case splitAtWidthWith policy (coordX p) cs of
                         (_,[],len) -- stayed on same line
                             -> Coord { coordY = coordY p,
                                        coordX = coordX p - len
                                      }
                         (_,_:cs',_) -- moved to previous line
-                            -> moveCoord w Coord {
+                            -> moveCoord policy w Coord {
                                             coordY = coordY p - 1,
                                             coordX = w-1
                                            } cs'
@@ -408,10 +414,13 @@ win32Term :: MaybeT IO RunTerm
 win32Term = do
     hs <- consoleHandles
     ch <- liftIO newTChanIO
+    policy <- liftIO detectWidthPolicy
     fileRT <- liftIO $ fileRunTerm stdin
     return fileRT
       { termOps = Left TermOps {
-          getLayout = getBufferSize (hOut hs)
+          getLayout = do
+              l <- getBufferSize (hOut hs)
+              return l {widthPolicy = policy}
           , withGetEvent = withWindowMode hs
                               . win32WithEvent hs ch
           , saveUnusedKeys = saveKeys ch

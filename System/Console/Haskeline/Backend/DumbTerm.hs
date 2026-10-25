@@ -76,10 +76,11 @@ drawLineDiff' :: LineChars -> LineChars -> DumbTermM ()
 drawLineDiff' (xs1,ys1) (xs2,ys2) = do
     Window {pos=p} <- get
     w <- maxWidth
+    policy <- asks widthPolicy
     let (xs1',xs2') = matchInit xs1 xs2
-    let (xw1, xw2) = (gsWidth xs1', gsWidth xs2')
+    let (xw1, xw2) = (gsWidthWith policy xs1', gsWidthWith policy xs2')
     let newP = p + xw2 - xw1
-    let (ys2', yw2) = takeWidth (w-newP) ys2
+    let (ys2', yw2) = takeWidthWith policy (w-newP) ys2
     if xw1 > p  || newP >= w
         then refitLine (xs2,ys2)
         else do -- we haven't moved outside the margins
@@ -90,7 +91,7 @@ drawLineDiff' (xs1,ys1) (xs2,ys2) = do
                     printText $ backs xw1
                 ([],_) | ys1 == xs2' ++ ys2 -> -- moved right
                     printText (graphemesToString xs2')
-                _ -> let extraLength = xw1 + snd (takeWidth (w-p) ys1)
+                _ -> let extraLength = xw1 + snd (takeWidthWith policy (w-p) ys1)
                                         - xw2 - yw2
                      in printText $ backs xw1
                         ++ graphemesToString (xs2' ++ ys2') ++ clearDeadText extraLength
@@ -99,17 +100,18 @@ drawLineDiff' (xs1,ys1) (xs2,ys2) = do
 refitLine :: ([Grapheme],[Grapheme]) -> DumbTermM ()
 refitLine (xs,ys) = do
     w <- maxWidth
-    let (xs',p) = dropFrames w xs
+    policy <- asks widthPolicy
+    let (xs',p) = dropFrames policy w xs
     put Window {pos=p}
-    let (ys',k) = takeWidth (w - p) ys
+    let (ys',k) = takeWidthWith policy (w - p) ys
     printText $ cr ++ graphemesToString (xs' ++ ys')
         ++ spaces (w-k-p)
         ++ backs (w-p)
   where
     -- returns the width of the returned characters.
-    dropFrames w zs = case splitAtWidth w zs of
+    dropFrames policy w zs = case splitAtWidthWith policy w zs of
                         (_,[],l) -> (zs,l)
-                        (_,zs',_) -> dropFrames w zs'
+                        (_,zs',_) -> dropFrames policy w zs'
 
     
 clearDeadText :: Int -> String
